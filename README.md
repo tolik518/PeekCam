@@ -69,6 +69,12 @@ Found a bug or have an idea? Open an issue or submit a PR.
 
 🧾 MIT License
 
+## Developement Notes
+
+* Can be installed using install.sh
+
+* Use `journalctl /usr/bin/gnome-shell -n 1000 --no-pager | grep "PeekCam"` for logs
+
 
 ![PeekCam Screenshot](screenshots/diagram.png)
 

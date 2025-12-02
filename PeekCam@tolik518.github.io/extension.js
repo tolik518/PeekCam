@@ -51,6 +51,9 @@ const PeekCamIndicator = GObject.registerClass(
       this._cameraMenuTimeoutId1 = null;
       this._cameraMenuTimeoutId2 = null;
       
+      // Track command timeouts for cleanup
+      this._commandTimeouts = [];
+      
       // Track if resolution has been set
       this._resolutionSet = false;
 
@@ -1488,6 +1491,11 @@ const PeekCamIndicator = GObject.registerClass(
         let timeoutId = null;
         if (timeout > 0) {
           timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, timeout, () => {
+            // Remove from tracking array
+            if (this._commandTimeouts) {
+              this._commandTimeouts = this._commandTimeouts.filter(id => id !== timeoutId);
+            }
+
             try {
               proc.force_exit();
             } catch (e) {
@@ -1496,6 +1504,11 @@ const PeekCamIndicator = GObject.registerClass(
             callback(false, '', "Timeout after " + timeout + "ms");
             return GLib.SOURCE_REMOVE;
           });
+          
+          // Track this timeout
+          if (this._commandTimeouts) {
+            this._commandTimeouts.push(timeoutId);
+          }
         }
 
         proc.communicate_utf8_async(null, null, (proc, result) => {
@@ -1503,6 +1516,10 @@ const PeekCamIndicator = GObject.registerClass(
             // Clear timeout if it was set
             if (timeoutId) {
               GLib.source_remove(timeoutId);
+              // Remove from tracking array
+              if (this._commandTimeouts) {
+                this._commandTimeouts = this._commandTimeouts.filter(id => id !== timeoutId);
+              }
             }
 
             let [, stdout, stderr] = proc.communicate_utf8_finish(result);
@@ -1621,6 +1638,14 @@ const PeekCamIndicator = GObject.registerClass(
 
       // Clean up position fix timeouts
       this._clearPositionFixTimeouts();
+
+      // Clean up any pending command timeouts
+      if (this._commandTimeouts) {
+        this._commandTimeouts.forEach(id => {
+          if (id) GLib.source_remove(id);
+        });
+        this._commandTimeouts = [];
+      }
 
       // Clean up global click handler if active
       if (this._globalClickId) {

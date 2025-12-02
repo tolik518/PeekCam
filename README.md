@@ -1,7 +1,7 @@
 # PeekCam
 
 <p align="center">
-  <img src="PeekCam%40gamalsherif1.github.io/icons/mirror.png" width="200" alt="PeekCam Logo"/>
+  <img src="PeekCam%40tolik518.github.io/icons/mirror.png" width="200" alt="PeekCam Logo"/>
 </p>
 
 🪞 **PeekCam** — Instant webcam preview for GNOME Shell (Linux alternative to macOS's Hand Mirror)  

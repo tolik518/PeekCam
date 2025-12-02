@@ -78,4 +78,4 @@ Found a bug or have an idea? Open an issue or submit a PR.
 
 ![PeekCam Screenshot](screenshots/diagram.png)
 
-Original Author: [Gamal Sherif](github.com/gamalsherif1)
+Original Author: [Gamal Sherif](https://github.com/gamalsherif1)

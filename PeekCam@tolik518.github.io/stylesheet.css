@@ -1,6 +1,6 @@
-/* CamPeek@gamalsherif1.github.io/stylesheet.css */
+/* PeekCam@gamalsherif1.github.io/stylesheet.css */
 /* Style for the frame with transition effect */
-.campeek-frame {
+.peekcam-frame {
     transition: opacity 100ms ease-in-out;
     padding: 0;
     background: none;
@@ -10,7 +10,7 @@
 }
 
 /* Style for the image inside the frame */
-.campeek-frame-image {
+.peekcam-frame-image {
     width: 480px;
     height: 270px;
     border-radius: 12px !important; /* Add rounded corners */
@@ -18,13 +18,13 @@
 }
 
 /* Add style for preview container to ensure rounded corners */
-.campeek-preview-container {
+.peekcam-preview-container {
     border-radius: 12px !important;
     overflow: hidden !important;
 }
 
 /* Style for the preview menu item */
-.campeek-preview-item {
+.peekcam-preview-item {
     padding: 0 !important;
     margin: 0 !important;
     background: none !important;
@@ -33,7 +33,7 @@
 }
 
 /* Panel button styling to ensure icon appears centered */
-.panel-button.campeek-button {
+.panel-button.peekcam-button {
     -natural-hpadding: 6px !important;
     -minimum-hpadding: 6px !important;
     font-weight: bold;
@@ -43,14 +43,14 @@
 }
 
 /* Style the container box */
-.campeek-box {
+.peekcam-box {
     /* Force centered content */
     text-align: center !important;
     width: 22px !important;
 }
 
 /* Style the indicator icon in the top panel */
-.system-status-icon.campeek-icon {
+.system-status-icon.peekcam-icon {
     padding: 0;
     margin: 0 auto !important;
 }

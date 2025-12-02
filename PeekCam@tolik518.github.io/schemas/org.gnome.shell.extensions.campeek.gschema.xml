@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
-  <schema id="org.gnome.shell.extensions.campeek" path="/org/gnome/shell/extensions/campeek/">
+  <schema id="org.gnome.shell.extensions.peekcam" path="/org/gnome/shell/extensions/peekcam/">
     <key name="camera-device" type="s">
       <default>'/dev/video0'</default>
       <summary>Camera device path</summary>

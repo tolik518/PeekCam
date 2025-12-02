@@ -14,10 +14,10 @@ import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import * as PanelMenu from "resource:///org/gnome/shell/ui/panelMenu.js";
 import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
 
-const CamPeekIndicator = GObject.registerClass(
-  class CamPeekIndicator extends PanelMenu.Button {
+const PeekCamIndicator = GObject.registerClass(
+  class PeekCamIndicator extends PanelMenu.Button {
     _init(extension) {
-      super._init(0.5, "CamPeek", false);
+      super._init(0.5, "PeekCam", false);
 
       this._extension = extension;
       this._isSelectionMenuOpen = false;
@@ -50,11 +50,24 @@ const CamPeekIndicator = GObject.registerClass(
       // Add for camera menu timeouts
       this._cameraMenuTimeoutId1 = null;
       this._cameraMenuTimeoutId2 = null;
+      
+      // Track if resolution has been set
+      this._resolutionSet = false;
+
+      console.log(`PeekCam: Version ${extension.metadata.version} loaded`);
+      try {
+        this._setupUI();
+        this._setupMenu();
+        this._setupEventHandlers();
+      } catch (e) {
+        console.error("PeekCam: Error during initialization:", e);
+        throw e;
+      }
     }
 
     _setupUI() {
       let topBox = new St.BoxLayout({
-        style_class: "panel-status-menu-box campeek-box",
+        style_class: "panel-status-menu-box peekcam-box",
         x_expand: true,
         y_expand: true,
         x_align: Clutter.ActorAlign.CENTER,
@@ -71,13 +84,13 @@ const CamPeekIndicator = GObject.registerClass(
           gicon = new Gio.FileIcon({ file: iconFile });
         }
       } catch (e) {
-        console.error(e, "CamPeek: Error loading custom icon");
+        console.error(e, "PeekCam: Error loading custom icon");
       }
 
       this._icon = new St.Icon({
         gicon: gicon,
         icon_name: gicon ? null : "camera-web-symbolic",
-        style_class: "system-status-icon campeek-icon",
+        style_class: "system-status-icon peekcam-icon",
         x_expand: true,
         y_expand: true,
         x_align: Clutter.ActorAlign.CENTER,
@@ -86,7 +99,7 @@ const CamPeekIndicator = GObject.registerClass(
 
       topBox.add_child(this._icon);
       this.set_layout_manager(new Clutter.BinLayout());
-      this.add_style_class_name("campeek-button");
+      this.add_style_class_name("peekcam-button");
       this.add_child(topBox);
     }
 
@@ -103,7 +116,7 @@ const CamPeekIndicator = GObject.registerClass(
       // Create preview container
       let previewItem = new PopupMenu.PopupBaseMenuItem({
         reactive: false,
-        style_class: "campeek-preview-item",
+        style_class: "peekcam-preview-item",
       });
       this.menu.addMenuItem(previewItem);
 
@@ -113,7 +126,7 @@ const CamPeekIndicator = GObject.registerClass(
         y_expand: true,
         width: 480,
         height: 270,
-        style_class: "campeek-preview-container",
+        style_class: "peekcam-preview-container",
         style: "clip-path: inset(0px round 12px);"
       });
 
@@ -289,7 +302,7 @@ const CamPeekIndicator = GObject.registerClass(
     _populateCameraMenu(menu) {
       // This function is no longer needed as we're using _rebuildCameraMenu
       // Keep it as a no-op for compatibility
-      console.log("CamPeek: _populateCameraMenu is deprecated, using _rebuildCameraMenu instead");
+      console.log("PeekCam: _populateCameraMenu is deprecated, using _rebuildCameraMenu instead");
     }
 
     _findAvailableCameras() {
@@ -303,7 +316,7 @@ const CamPeekIndicator = GObject.registerClass(
         try {
           this._cameraDetectionProcess.force_exit();
         } catch (e) {
-          console.error("CamPeek: Error cancelling previous detection:", e);
+          console.error("PeekCam: Error cancelling previous detection:", e);
         }
         this._cameraDetectionProcess = null;
       }
@@ -324,7 +337,7 @@ const CamPeekIndicator = GObject.registerClass(
         
         this._tryAsyncDetectionMethod(commands, 0);
       } catch (e) {
-        console.error("CamPeek: Error starting async camera detection:", e);
+        console.error("PeekCam: Error starting async camera detection:", e);
         // If we have an open camera selection menu, update it with no cameras
         if (this._cameraSelectionMenu && this._isSelectionMenuOpen) {
           this._updateCameraSelectionMenu("");
@@ -340,15 +353,15 @@ const CamPeekIndicator = GObject.registerClass(
       }
       
       const command = commands[index];
-      console.log("CamPeek: Trying detection method " + (index + 1) + ": " + command);
+      console.log("PeekCam: Trying detection method " + (index + 1) + ": " + command);
       
       this._runCommand(command, (success, stdout, stderr) => {
         if (success && stdout && stdout.trim() !== "") {
           let devices = stdout.split("\n").filter(d => d && d.trim() !== "" && d.startsWith("/dev/video"));
           
           if (devices.length > 0) {
-            console.log("CamPeek: Found " + devices.length + " potential camera device(s) using method " + (index + 1));
-            this._testAllCameras(devices);
+            console.log("PeekCam: Found " + devices.length + " potential camera device(s) using method " + (index + 1));
+            this._testAndFilterCameras(devices.join("\n"));
             return;
           }
         }
@@ -362,7 +375,7 @@ const CamPeekIndicator = GObject.registerClass(
     }
     
     _asyncFallbackDetection() {
-      console.log("CamPeek: Async detection - checking fallback devices...");
+      console.log("PeekCam: Async detection - checking fallback devices...");
       
       // Check expanded range of camera device paths for better compatibility
       let commonPaths = [
@@ -381,11 +394,11 @@ const CamPeekIndicator = GObject.registerClass(
       }
       
       if (foundDevices.length > 0) {
-        console.log("CamPeek: Found " + foundDevices.length + " device(s) in async fallback check");
+        console.log("PeekCam: Found " + foundDevices.length + " device(s) in async fallback check");
         let deviceOutput = foundDevices.join("\n");
-        this._testAllCameras(foundDevices);
+        this._testAndFilterCameras(deviceOutput);
       } else {
-        console.log("CamPeek: No camera devices found in async detection");
+        console.log("PeekCam: No camera devices found in async detection");
         // If we have an open camera selection menu, update it with no cameras
         if (this._cameraSelectionMenu && this._isSelectionMenuOpen) {
           this._updateCameraSelectionMenu("");
@@ -437,7 +450,7 @@ const CamPeekIndicator = GObject.registerClass(
           
           // When all devices are tested, update the menu
           if (this._pendingDevices <= 0) {
-            console.log("CamPeek: All devices tested, working devices:", this._workingDevices);
+            console.log("PeekCam: All devices tested, working devices:", this._workingDevices);
             this._updateCameraSelectionMenu(this._workingDevices);
             
             // Clean up
@@ -473,37 +486,50 @@ const CamPeekIndicator = GObject.registerClass(
           });
         });
       } catch (e) {
-        console.error("CamPeek: Error starting camera test for " + device + ":", e);
+        console.error("PeekCam: Error starting camera test for " + device + ":", e);
         callback(false);
       }
     }
     
     _testCameraWithGStreamer(device, callback) {
-      const command = "timeout 2s gst-launch-1.0 v4l2src device=" + device + " num-buffers=1 ! videoconvert ! videoscale ! video/x-raw,width=320,height=240 ! fakesink > /dev/null 2>&1 && echo success || echo fail";
+      // Added decodebin to handle MJPG and other formats
+      const command = "timeout 3s gst-launch-1.0 v4l2src device=" + device + " num-buffers=1 ! decodebin ! videoconvert ! videoscale ! video/x-raw,width=320,height=240 ! fakesink > /dev/null 2>&1 && echo success || echo fail";
       
       this._runCommand(command, (success, stdout, stderr) => {
         const works = success && stdout && stdout.trim() === "success";
         callback(works);
       }, {
-        timeout: 3000,
+        timeout: 4000,
         description: "GStreamer test for " + device
       });
     }
     
     _testCameraWithV4L2(device, callback) {
-      const command = "v4l2-ctl --device=" + device + " --list-formats 2>/dev/null | grep -E \"\\[[0-9]+\\]:\" | wc -l";
+      // Check if v4l2-ctl exists first
+      const checkCommand = "command -v v4l2-ctl >/dev/null 2>&1 && echo yes || echo no";
       
-      this._runCommand(command, (success, stdout, stderr) => {
-        if (success && stdout) {
-          let formatCount = parseInt(stdout.trim());
-          let works = !isNaN(formatCount) && formatCount > 0;
-          callback(works);
-        } else {
-          callback(false);
+      this._runCommand(checkCommand, (success, stdout) => {
+        if (stdout && stdout.trim() === "no") {
+           // Tool missing, assume success and let GStreamer test decide
+           console.log("PeekCam: v4l2-ctl missing, skipping format check for " + device);
+           callback(true);
+           return;
         }
-      }, {
-        timeout: 2000,
-        description: "v4l2-ctl test for " + device
+
+        const command = "v4l2-ctl --device=" + device + " --list-formats 2>/dev/null | grep -E \"\\[[0-9]+\\]:\" | wc -l";
+        
+        this._runCommand(command, (success, stdout, stderr) => {
+          if (success && stdout) {
+            let formatCount = parseInt(stdout.trim());
+            let works = !isNaN(formatCount) && formatCount > 0;
+            callback(works);
+          } else {
+            callback(false);
+          }
+        }, {
+          timeout: 2000,
+          description: "v4l2-ctl test for " + device
+        });
       });
     }
     
@@ -519,7 +545,7 @@ const CamPeekIndicator = GObject.registerClass(
         // Check if device is a video capture device using capabilities
         this._testCameraCapabilities(device, callback);
       } catch (e) {
-        console.error("CamPeek: Error in basic access test for " + device + ":", e);
+        console.error("PeekCam: Error in basic access test for " + device + ":", e);
         callback(false);
       }
     }
@@ -576,7 +602,7 @@ const CamPeekIndicator = GObject.registerClass(
         // If no cameras found, show a disabled item
         this._finalizeCameraMenu([]);
       } catch (e) {
-        console.error("CamPeek: Error updating camera menu:", e);
+        console.error("PeekCam: Error updating camera menu:", e);
       }
     }
     
@@ -625,14 +651,9 @@ const CamPeekIndicator = GObject.registerClass(
     _finalizeCameraMenu(cameras) {
       // If no cameras found, show a disabled item
       if (cameras.length === 0) {
-        // Remove all items and show only 'No cameras found'
+        // Just rebuild with empty list, _rebuildCameraMenu handles the "No cameras found" item
         const finish = () => {
-          this._cameraSelectionMenu.removeAll();
-          let noCamerasItem = new PopupMenu.PopupMenuItem(_("No cameras found"));
-          noCamerasItem.setSensitive(false);
-          this._cameraSelectionMenu.addMenuItem(noCamerasItem);
-          // Add refresh and donate as usual
-          this._rebuildCameraMenu([]); // Will add refresh/donate
+          this._rebuildCameraMenu([]); 
         };
         // Ensure minimum loading time
         let elapsed = Date.now() - (this._cameraLoadingStartTime || 0);
@@ -678,19 +699,26 @@ const CamPeekIndicator = GObject.registerClass(
         titleItem.setSensitive(false);
         this._cameraSelectionMenu.addMenuItem(titleItem);
         this._cameraSelectionMenu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        // Add each camera to the menu
-        let activeCamera = this._cameraDevice;
-        cameras.forEach((camera) => {
-          let isActive = camera.device === activeCamera;
-          let item = new PopupMenu.PopupMenuItem(camera.label);
-          if (isActive) {
-            item.setOrnament(PopupMenu.Ornament.DOT);
-          }
-          item.connect("activate", () => {
-            this._selectCamera(camera.device);
+        
+        if (cameras.length === 0) {
+          let noCamerasItem = new PopupMenu.PopupMenuItem(_("No cameras found"));
+          noCamerasItem.setSensitive(false);
+          this._cameraSelectionMenu.addMenuItem(noCamerasItem);
+        } else {
+          // Add each camera to the menu
+          let activeCamera = this._cameraDevice;
+          cameras.forEach((camera) => {
+            let isActive = camera.device === activeCamera;
+            let item = new PopupMenu.PopupMenuItem(camera.label);
+            if (isActive) {
+              item.setOrnament(PopupMenu.Ornament.DOT);
+            }
+            item.connect("activate", () => {
+              this._selectCamera(camera.device);
+            });
+            this._cameraSelectionMenu.addMenuItem(item);
           });
-          this._cameraSelectionMenu.addMenuItem(item);
-        });
+        }
         // Add a refresh option at the bottom
         this._cameraSelectionMenu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         let refreshItem = new PopupMenu.PopupMenuItem(_("Refresh Camera List"));
@@ -708,10 +736,10 @@ const CamPeekIndicator = GObject.registerClass(
         this._cameraSelectionMenu.addMenuItem(refreshItem);
         // Add donation button in a separate section
         this._cameraSelectionMenu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        let donateItem = new PopupMenu.PopupMenuItem(_("Support ❤️"));
-        donateItem.label.style = "color: #ff0000;";
-        donateItem.connect("activate", () => {
-          let url = "https://buymeacoffee.com/gamalsherii";
+        let githubItem = new PopupMenu.PopupMenuItem(`PeekCam v${this._extension.metadata.version}`);
+        githubItem.label.style = "color: #707070ff;";
+        githubItem.connect("activate", () => {
+          let url = "https://github.com/tolik518/PeekCam";
           try {
             Gio.AppInfo.launch_default_for_uri_async(url, null, null, (source, result) => {
               try {
@@ -724,9 +752,9 @@ const CamPeekIndicator = GObject.registerClass(
             console.error("Error opening donation URL:", e);
           }
         });
-        this._cameraSelectionMenu.addMenuItem(donateItem);
+        this._cameraSelectionMenu.addMenuItem(githubItem);
       } catch (e) {
-        console.error("CamPeek: Error rebuilding camera menu:", e);
+        console.error("PeekCam: Error rebuilding camera menu:", e);
       }
     }
 
@@ -798,9 +826,9 @@ const CamPeekIndicator = GObject.registerClass(
 
         // Avoid trying to set arrow position directly as it's causing errors
         // Just log a message instead
-        console.log("CamPeek: Menu position updated");
+        console.log("PeekCam: Menu position updated");
       } catch (e) {
-        console.error("CamPeek: Error fixing menu position:", e);
+        console.error("PeekCam: Error fixing menu position:", e);
       }
     }
 
@@ -833,15 +861,18 @@ const CamPeekIndicator = GObject.registerClass(
           this._showCameraErrorMessage(
             "No Camera Found", 
             "Connect a camera device",
-            "Make sure your camera is connected and try again. You can also right-click the CamPeek icon to select a different camera."
+            "Make sure your camera is connected and try again. You can also right-click the PeekCam icon to select a different camera."
           );
           return;
         }
 
+        // Reset resolution flag
+        this._resolutionSet = false;
+
         // Create a temporary directory for our frames
         let tempDir = GLib.build_filenamev([
           GLib.get_tmp_dir(),
-          "campeek-frames-" + GLib.random_int(),
+          "peekcam-frames-" + GLib.random_int(),
         ]);
         this._tempDir = tempDir;
 
@@ -856,7 +887,7 @@ const CamPeekIndicator = GObject.registerClass(
             y_expand: true,
             width: 480,
             height: 270,
-            style_class: "campeek-frame",
+            style_class: "peekcam-frame",
             style: "clip-path: inset(0px round 12px);"
           });
           this._previewContainer.add_child(this._cameraOutput);
@@ -890,33 +921,100 @@ const CamPeekIndicator = GObject.registerClass(
           "fi\n\n" +
           "# Get camera capabilities and choose best format\n" +
           "CAMERA_CAPS=\"\"\n" +
+          "TARGET_WIDTH=480\n" +
+          "TARGET_HEIGHT=270\n" + // Default 16:9
           "if command -v v4l2-ctl &> /dev/null; then\n" +
           "    # Try to get supported resolutions and formats\n" +
-          "    FORMATS=$(v4l2-ctl --device=" + this._cameraDevice + " --list-formats-ext 2>/dev/null | grep -E \"Size:|Interval:\" | head -20)\n" +
+          "    FORMATS=$(v4l2-ctl --device=" + this._cameraDevice + " --list-formats-ext 2>/dev/null | grep -E \"Size:|Interval:\" | head -40)\n" +
           "    \n" +
-          "    # Check for common resolutions (prefer 16:9 aspect ratio)\n" +
-          "    if echo \"$FORMATS\" | grep -q \"640x360\"; then\n" +
-          "        CAMERA_CAPS=\"video/x-raw,width=640,height=360\"\n" +
-          "    elif echo \"$FORMATS\" | grep -q \"854x480\"; then\n" +
-          "        CAMERA_CAPS=\"video/x-raw,width=854,height=480\"\n" +
+          "    # Check for common resolutions\n" +
+          "    if echo \"$FORMATS\" | grep -q \"1280x720\"; then\n" +
+          "        CAMERA_CAPS=\"video/x-raw,width=1280,height=720\"\n" +
+          "        TARGET_HEIGHT=270\n" +
+          "    elif echo \"$FORMATS\" | grep -q \"1920x1080\"; then\n" +
+          "        CAMERA_CAPS=\"video/x-raw,width=1920,height=1080\"\n" +
+          "        TARGET_HEIGHT=270\n" +
           "    elif echo \"$FORMATS\" | grep -q \"960x540\"; then\n" +
           "        CAMERA_CAPS=\"video/x-raw,width=960,height=540\"\n" +
-          "    elif echo \"$FORMATS\" | grep -q \"1280x720\"; then\n" +
-          "        CAMERA_CAPS=\"video/x-raw,width=1280,height=720\"\n" +
+          "        TARGET_HEIGHT=270\n" +
+          "    elif echo \"$FORMATS\" | grep -q \"848x480\"; then\n" +
+          "        CAMERA_CAPS=\"video/x-raw,width=848,height=480\"\n" +
+          "        TARGET_HEIGHT=270\n" +
+          "    elif echo \"$FORMATS\" | grep -q \"854x480\"; then\n" +
+          "        CAMERA_CAPS=\"video/x-raw,width=854,height=480\"\n" +
+          "        TARGET_HEIGHT=270\n" +
+          "    elif echo \"$FORMATS\" | grep -q \"640x360\"; then\n" +
+          "        CAMERA_CAPS=\"video/x-raw,width=640,height=360\"\n" +
+          "        TARGET_HEIGHT=270\n" +
           "    elif echo \"$FORMATS\" | grep -q \"640x480\"; then\n" +
           "        CAMERA_CAPS=\"video/x-raw,width=640,height=480\"\n" +
+          "        TARGET_HEIGHT=360\n" + // 4:3
           "    elif echo \"$FORMATS\" | grep -q \"320x240\"; then\n" +
           "        CAMERA_CAPS=\"video/x-raw,width=320,height=240\"\n" +
+          "        TARGET_HEIGHT=360\n" + // 4:3
+          "    elif echo \"$FORMATS\" | grep -q \"160x120\"; then\n" +
+          "        CAMERA_CAPS=\"video/x-raw,width=160,height=120\"\n" +
+          "        TARGET_HEIGHT=360\n" + // 4:3
           "    fi\n" +
           "fi\n\n" +
           "# Fallback to auto-negotiation if no specific format found\n" +
           "if [ -z \"$CAMERA_CAPS\" ]; then\n" +
           "    CAMERA_CAPS=\"video/x-raw\"\n" +
+          "    # Try to detect using gst-device-monitor-1.0 if v4l2-ctl is missing\n" +
+          "    if command -v gst-device-monitor-1.0 &> /dev/null; then\n" +
+          "        echo \"Using gst-device-monitor-1.0\" > \"" + tempDir + "/debug_method\"\n" +
+          "        # Find caps for this device by looking around the device path in output\n" +
+          "        OUTPUT=$(gst-device-monitor-1.0 Video/Source)\n" +
+          "        echo \"$OUTPUT\" > \"" + tempDir + "/debug_monitor_output\"\n" +
+          "        MONITOR_CAPS=$(echo \"$OUTPUT\" | grep -B 50 -A 5 \"" + this._cameraDevice + "\" | grep \"width=\" | head -1)\n" +
+          "        echo \"Caps: $MONITOR_CAPS\" > \"" + tempDir + "/debug_caps\"\n" +
+          "        if [ ! -z \"$MONITOR_CAPS\" ]; then\n" +
+          "             # Extract width and height\n" +
+          "             P_WIDTH=$(echo \"$MONITOR_CAPS\" | grep -o \"width=[0-9]*\" | cut -d= -f2)\n" +
+          "             P_HEIGHT=$(echo \"$MONITOR_CAPS\" | grep -o \"height=[0-9]*\" | cut -d= -f2)\n" +
+          "             # Extract format (mime type)\n" +
+          "             P_FORMAT=$(echo \"$MONITOR_CAPS\" | grep -oE \"(video/x-raw|image/jpeg)\")\n" +
+          "             if [ -z \"$P_FORMAT\" ]; then P_FORMAT=\"video/x-raw\"; fi\n" +
+          "             \n" +
+          "             if [ ! -z \"$P_WIDTH\" ] && [ ! -z \"$P_HEIGHT\" ]; then\n" +
+          "                 # Set CAMERA_CAPS to match this resolution to force it\n" +
+          "                 CAMERA_CAPS=\"$P_FORMAT,width=$P_WIDTH,height=$P_HEIGHT\"\n" +
+          "                 \n" +
+          "                 # Calculate aspect ratio\n" +
+          "                 if [ $((P_WIDTH * 100 / P_HEIGHT)) -lt 150 ]; then\n" +
+          "                    TARGET_HEIGHT=360 # 4:3\n" +
+          "                 else\n" +
+          "                    TARGET_HEIGHT=270 # 16:9\n" +
+          "                 fi\n" +
+          "             fi\n" +
+          "        fi\n" +
+          "    # Try to probe default resolution using gst-launch if v4l2-ctl and gst-device-monitor were missing\n" +
+          "    elif command -v gst-launch-1.0 &> /dev/null; then\n" +
+          "        echo \"Using gst-launch-1.0 probe\" > \"" + tempDir + "/debug_method\"\n" +
+          "        PROBE=$(timeout 2s gst-launch-1.0 -v v4l2src device=" + this._cameraDevice + " num-buffers=1 ! fakesink 2>&1 | grep \"caps = \" | head -1)\n" +
+          "        echo \"Probe: $PROBE\" > \"" + tempDir + "/debug_probe\"\n" +
+          "        if [ ! -z \"$PROBE\" ]; then\n" +
+          "            P_WIDTH=$(echo \"$PROBE\" | grep -o \"width=(int)[0-9]*\" | cut -d')' -f2)\n" +
+          "            P_HEIGHT=$(echo \"$PROBE\" | grep -o \"height=(int)[0-9]*\" | cut -d')' -f2)\n" +
+          "            if [ ! -z \"$P_WIDTH\" ] && [ ! -z \"$P_HEIGHT\" ]; then\n" +
+          "                # Check aspect ratio (threshold 1.5 for 3:2)\n" +
+          "                if [ $((P_WIDTH * 100 / P_HEIGHT)) -lt 150 ]; then\n" +
+          "                    TARGET_HEIGHT=360\n" + // 4:3
+          "                else\n" +
+          "                    TARGET_HEIGHT=270\n" + // 16:9
+          "                fi\n" +
+          "            fi\n" +
+          "        fi\n" +
+          "    else\n" +
+          "        echo \"No detection method found\" > \"" + tempDir + "/debug_method\"\n" +
+          "    fi\n" +
           "fi\n\n" +
+          "# Write resolution to file for the extension to read\n" +
+          "echo \"${TARGET_WIDTH}x${TARGET_HEIGHT}\" > \"" + tempDir + "/resolution\"\n\n" +
           "# Use GStreamer for frame capture with adaptive resolution and better error handling\n" +
-          "gst-launch-1.0 v4l2src device=" + this._cameraDevice + " ! \\\n" +
-          "videoconvert ! videoscale add-borders=false ! $CAMERA_CAPS,framerate=30/1 ! \\\n" +
-          "videoscale ! video/x-raw,width=480,height=270 ! \\\n" +
+          "gst-launch-1.0 v4l2src device=" + this._cameraDevice + " ! $CAMERA_CAPS ! decodebin ! \\\n" +
+          "videoconvert ! videoscale add-borders=false ! \\\n" +
+          "video/x-raw,width=$TARGET_WIDTH,height=$TARGET_HEIGHT ! \\\n" +
           "queue max-size-buffers=2 leaky=downstream ! \\\n" +
           "videoflip method=horizontal-flip ! jpegenc quality=85 ! \\\n" +
           "multifilesink location=\"" + this._framesDir + "/frame_%05d.jpg\" max-files=5 post-messages=true 2>/dev/null || \\\n" +
@@ -993,7 +1091,7 @@ const CamPeekIndicator = GObject.registerClass(
           },
         );
       } catch (e) {
-        console.error("CamPeek: Error starting camera", e);
+        console.error("PeekCam: Error starting camera", e);
         this._spinner.visible = false;
         this._showCameraErrorMessage("Error starting camera", "Try again", e.message);
       }
@@ -1087,6 +1185,42 @@ const CamPeekIndicator = GObject.registerClass(
           }
         }
 
+        // Check for resolution file if not yet set
+        if (!this._resolutionSet && this._tempDir) {
+          // Check debug files
+          let debugMethod = Gio.File.new_for_path(GLib.build_filenamev([this._tempDir, "debug_method"]));
+          if (debugMethod.query_exists(null)) {
+             let [s, c] = debugMethod.load_contents(null);
+             if (s) console.error("PeekCam Debug Method: " + new TextDecoder().decode(c).trim());
+             debugMethod.delete(null); // Read once
+          }
+          
+          let debugCaps = Gio.File.new_for_path(GLib.build_filenamev([this._tempDir, "debug_caps"]));
+          if (debugCaps.query_exists(null)) {
+             let [s, c] = debugCaps.load_contents(null);
+             if (s) console.error("PeekCam Debug Caps: " + new TextDecoder().decode(c).trim());
+             debugCaps.delete(null); // Read once
+          }
+
+          let resFile = Gio.File.new_for_path(GLib.build_filenamev([this._tempDir, "resolution"]));
+          if (resFile.query_exists(null)) {
+            try {
+              let [success, contents] = resFile.load_contents(null);
+              if (success) {
+                let resStr = new TextDecoder().decode(contents).trim();
+                console.error("PeekCam: Read resolution from file: " + resStr);
+                let [w, h] = resStr.split('x').map(Number);
+                if (w && h) {
+                  this._updatePreviewDimensions(w, h);
+                  this._resolutionSet = true;
+                }
+              }
+            } catch(e) {
+              console.error("Error reading resolution:", e);
+            }
+          }
+        }
+
         // Find newest frame file
         let newestFrame = this._findNewestFrame();
 
@@ -1104,11 +1238,10 @@ const CamPeekIndicator = GObject.registerClass(
             // Using a widget with background image to ensure it fills the container
             if (!this._imageWrapper || !this._imageWrapper.get_parent()) {
               this._imageWrapper = new St.Widget({
-                style_class: "campeek-frame-image",
+                style_class: "peekcam-frame-image",
                 x_expand: true,
                 y_expand: true,
-                width: 480,
-                height: 270,
+                // Width/height will be managed by parent container
                 style:
                   "background-size: cover; background-position: center; background-image: url('" +
                   file.get_uri() +
@@ -1140,6 +1273,18 @@ const CamPeekIndicator = GObject.registerClass(
       }
 
       return true;
+    }
+
+    _updatePreviewDimensions(width, height) {
+      if (this._previewContainer) {
+        this._previewContainer.set_width(width);
+        this._previewContainer.set_height(height);
+      }
+      if (this._cameraOutput) {
+        this._cameraOutput.set_width(width);
+        this._cameraOutput.set_height(height);
+      }
+      // _imageWrapper fills parent, so no need to set explicit size
     }
 
     _findNewestFrame() {
@@ -1281,11 +1426,14 @@ const CamPeekIndicator = GObject.registerClass(
         }
       }
 
-      this._spinner.visible = false;
+
+      if (this._spinner) {
+        this._spinner.visible = false;
+      }
 
       // Try to kill any stray test processes 
       this._runCommand(
-        ["pkill", "-f", "campeek-test-"],
+        ["pkill", "-f", "peekcam-test-"],
         () => {}, // Don't wait for completion, it's best-effort cleanup
         {
           timeout: 1000,
@@ -1343,7 +1491,7 @@ const CamPeekIndicator = GObject.registerClass(
             try {
               proc.force_exit();
             } catch (e) {
-              console.error("CamPeek: Error forcing exit of " + description + ":", e);
+              console.error("PeekCam: Error forcing exit of " + description + ":", e);
             }
             callback(false, '', "Timeout after " + timeout + "ms");
             return GLib.SOURCE_REMOVE;
@@ -1361,12 +1509,12 @@ const CamPeekIndicator = GObject.registerClass(
             let success = proc.get_successful();
             callback(success, stdout || '', stderr || '');
           } catch (e) {
-            console.error("CamPeek: Error in " + description + ":", e);
+            console.error("PeekCam: Error in " + description + ":", e);
             callback(false, '', e.message);
           }
         });
       } catch (e) {
-        console.error("CamPeek: Error starting " + description + ":", e);
+        console.error("PeekCam: Error starting " + description + ":", e);
         callback(false, '', e.message);
       }
     }
@@ -1405,7 +1553,7 @@ const CamPeekIndicator = GObject.registerClass(
             // Clean up files asynchronously
             this._cleanupTestFiles(item.testFile, item.scriptPath);
           } catch (e) {
-            console.error("CamPeek: Error cleaning up test process:", e);
+            console.error("PeekCam: Error cleaning up test process:", e);
           }
         });
         this._pendingTestProcesses = [];
@@ -1425,7 +1573,7 @@ const CamPeekIndicator = GObject.registerClass(
       
       // Try to kill any stray test processes 
       this._runCommand(
-        ["pkill", "-f", "campeek-test-"],
+        ["pkill", "-f", "peekcam-test-"],
         () => {}, // Don't wait for completion, it's best-effort cleanup
         {
           timeout: 1000,
@@ -1512,13 +1660,13 @@ const CamPeekIndicator = GObject.registerClass(
       // Check if the current camera device exists
       let deviceFile = Gio.File.new_for_path(this._cameraDevice);
       if (!deviceFile.query_exists(null)) {
-        console.log("CamPeek: Camera device " + this._cameraDevice + " does not exist, finding a valid one...");
+        console.log("PeekCam: Camera device " + this._cameraDevice + " does not exist, finding a valid one...");
         this._findAndTestCameras();
       } else {
         // Quick test to see if camera works - if not, find a working one
         this._testCameraQuick(this._cameraDevice, (works) => {
           if (!works) {
-            console.log("CamPeek: Camera device " + this._cameraDevice + " exists but doesn't work");
+            console.log("PeekCam: Camera device " + this._cameraDevice + " exists but doesn't work");
             this._findAndTestCameras();
           }
           // No need to log if working
@@ -1540,7 +1688,7 @@ const CamPeekIndicator = GObject.registerClass(
         
         this._tryNextDetectionMethod(commands, 0);
       } catch (e) {
-        console.error("CamPeek: Error finding camera devices:", e);
+        console.error("PeekCam: Error finding camera devices:", e);
         // Fallback to default device
         this._fallbackToDefaultDevice();
       }
@@ -1554,14 +1702,14 @@ const CamPeekIndicator = GObject.registerClass(
       }
       
       const command = commands[index];
-      console.log("CamPeek: Trying detection method " + (index + 1) + ": " + command);
+      console.log("PeekCam: Trying detection method " + (index + 1) + ": " + command);
       
       this._runCommand(command, (success, stdout, stderr) => {
         if (success && stdout && stdout.trim() !== "") {
           let devices = stdout.split("\n").filter(d => d && d.trim() !== "" && d.startsWith("/dev/video"));
           
           if (devices.length > 0) {
-            console.log("CamPeek: Found " + devices.length + " potential camera device(s) using method " + (index + 1));
+            console.log("PeekCam: Found " + devices.length + " potential camera device(s) using method " + (index + 1));
             this._testAllCameras(devices);
             return;
           }
@@ -1576,7 +1724,7 @@ const CamPeekIndicator = GObject.registerClass(
     }
     
     _fallbackToDefaultDevice() {
-      console.log("CamPeek: No cameras detected, checking common device paths...");
+      console.log("PeekCam: No cameras detected, checking common device paths...");
       
       // Check expanded range of camera device paths for better compatibility
       let commonPaths = [
@@ -1595,10 +1743,10 @@ const CamPeekIndicator = GObject.registerClass(
       }
       
       if (foundDevices.length > 0) {
-        console.log("CamPeek: Found " + foundDevices.length + " device(s) in fallback check");
+        console.log("PeekCam: Found " + foundDevices.length + " device(s) in fallback check");
         this._testAllCameras(foundDevices);
       } else {
-        console.log("CamPeek: No camera devices found at all");
+        console.log("PeekCam: No camera devices found at all");
         // Set to default anyway - user might connect a camera later
         this._cameraDevice = "/dev/video0";
         this._settings.set_string("camera-device", this._cameraDevice);
@@ -1673,7 +1821,7 @@ const CamPeekIndicator = GObject.registerClass(
       if (workingCamera) {
         // Only log if the camera is changing
         if (workingCamera.device !== this._cameraDevice) {
-          console.log("CamPeek: Selected working camera: " + workingCamera.device);
+          console.log("PeekCam: Selected working camera: " + workingCamera.device);
         }
         this._cameraDevice = workingCamera.device;
         this._settings.set_string("camera-device", workingCamera.device);
@@ -1681,7 +1829,7 @@ const CamPeekIndicator = GObject.registerClass(
         // Fallback to first device if none work
         if (this._cameraTestResults.length > 0 && 
             this._cameraTestResults[0].device !== this._cameraDevice) {
-          console.log("CamPeek: No working cameras found, defaulting to first device");
+          console.log("PeekCam: No working cameras found, defaulting to first device");
           this._cameraDevice = this._cameraTestResults[0].device;
           this._settings.set_string("camera-device", this._cameraDevice);
         }
@@ -1793,10 +1941,10 @@ const CamPeekIndicator = GObject.registerClass(
   },
 );
 
-export default class CamPeekExtension extends Extension {
+export default class PeekCamExtension extends Extension {
   enable() {
-    this._indicator = new CamPeekIndicator(this);
-    Main.panel.addToStatusArea("campeek", this._indicator, 0, "right");
+    this._indicator = new PeekCamIndicator(this);
+    Main.panel.addToStatusArea("peekcam", this._indicator, 0, "right");
   }
 
   disable() {
@@ -1806,6 +1954,6 @@ export default class CamPeekExtension extends Extension {
 
   getSettings() {
     // Use the Extension class's correct method
-    return super.getSettings("org.gnome.shell.extensions.campeek");
+    return super.getSettings("org.gnome.shell.extensions.peekcam");
   }
 }

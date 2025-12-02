@@ -1,0 +1,1 @@
+mkdir -p ~/.local/share/gnome-shell/extensions/PeekCam@gamalsherif1.github.io && cp -r /home/developer/Projects/PeekCam/PeekCam@gamalsherif1.github.io/* ~/.local/share/gnome-shell/extensions/PeekCam@gamalsherif1.github.io/ && gnome-extensions enable PeekCam@gamalsherif1.github.io && echo "Installation complete."
